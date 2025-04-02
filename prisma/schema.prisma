@@ -1,0 +1,35 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Используем переменную среды для URL базы данных
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  password          String?
+  name              String?
+  isVerified        Boolean            @default(false)
+  googleId          String?            @unique
+  facebookId        String?            @unique
+  refreshToken      String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  verificationCodes VerificationCode[]
+}
+
+model VerificationCode {
+  id        String   @id @default(uuid())
+  userId    String
+  code      String
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
