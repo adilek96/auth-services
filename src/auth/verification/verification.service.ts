@@ -1,31 +1,27 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
+import { VerifyResponse } from './models/verify-response.model';
+import { LoginService } from '../login/login.service';
 
 @Injectable()
 export class VerificationService {
   private transporter: nodemailer.Transporter;
   private readonly VERIFICATION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
-  constructor(private prisma: PrismaService) {
-    const smtpPort = process.env.SMTP_PORT;
-    const smtpHost = process.env.SMTP_HOST;
-    const smtpUser = process.env.SMTP_USER;
-    const smtpPass = process.env.SMTP_PASS;
-    const smtpFrom = process.env.SMTP_FROM;
-
-    if (!smtpHost || !smtpUser || !smtpPass || !smtpFrom) {
-      throw new Error('SMTP configuration is incomplete');
-    }
-
+  constructor(
+    private prisma: PrismaService,
+    private loginService: LoginService,
+  ) {
+    // Создаем транспортер для отправки email
     this.transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort ? parseInt(smtpPort) : 587,
-      // secure: true,
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
       auth: {
-        user: smtpUser,
-        pass: smtpPass,
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
       },
     });
 
@@ -37,106 +33,122 @@ export class VerificationService {
     return crypto.randomInt(100000, 999999).toString();
   }
 
-  async checkUnverifiedUsers() {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  async checkUnverifiedUsers(): Promise<void> {
+    const thirtyMinutesAgo = new Date();
+    thirtyMinutesAgo.setMinutes(thirtyMinutesAgo.getMinutes() - 30);
 
-    // Находим неверифицированных пользователей без социальных ID
     const unverifiedUsers = await this.prisma.user.findMany({
       where: {
         isVerified: false,
+        createdAt: {
+          lt: thirtyMinutesAgo,
+        },
         googleId: null,
         facebookId: null,
-        createdAt: {
-          lt: thirtyMinutesAgo
-        }
-      }
+      },
     });
 
-    // Удаляем найденных пользователей
     for (const user of unverifiedUsers) {
-      // Сначала удаляем все коды верификации пользователя
+      // Сначала удаляем все коды верификации
       await this.prisma.verificationCode.deleteMany({
-        where: { userId: user.id }
+        where: { userId: user.id },
       });
-      
-      // Затем удаляем самого пользователя
+
+      // Затем удаляем пользователя
       await this.prisma.user.delete({
-        where: { id: user.id }
+        where: { id: user.id },
       });
     }
   }
 
-  async sendOTP(email: string): Promise<boolean> {
+  private async sendVerificationEmail(email: string, code: string): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: process.env.SMTP_FROM || 'noreply@yourdomain.com',
+        to: email,
+        subject: 'Подтверждение email',
+        html: `
+          <h1>Подтверждение email</h1>
+          <p>Ваш код подтверждения: <strong>${code}</strong></p>
+          <p>Этот код действителен в течение 30 минут.</p>
+          <p>Если вы не запрашивали подтверждение email, проигнорируйте это письмо.</p>
+        `,
+      });
+    } catch (error) {
+      console.error('Ошибка отправки email:', error);
+      // В случае ошибки отправки email, выводим код в консоль для отладки
+      console.log(`Код подтверждения для ${email}: ${code}`);
+    }
+  }
+
+  async sendOTP(email: string): Promise<{ success: boolean; message: string }> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new BadRequestException('User not found');
+      throw new BadRequestException('Пользователь не найден');
     }
 
-    if (user.isVerified) {
-      throw new BadRequestException('User is already verified');
-    }
+    const code = this.generateOTP();
+    const expiresAt = new Date(Date.now() + this.VERIFICATION_TIMEOUT);
 
-    const otp = this.generateOTP();
-    const otpExpiry = new Date(Date.now() + this.VERIFICATION_TIMEOUT);
-
-    // Сохраняем OTP в базе
     await this.prisma.verificationCode.create({
       data: {
         userId: user.id,
-        code: otp,
-        expiresAt: otpExpiry,
+        code,
+        expiresAt,
       },
     });
 
-    // Отправляем email
-    await this.transporter.sendMail({
-      from: process.env.SMTP_FROM,
-      to: email,
-      subject: 'Email Verification Code',
-      html: `
-        <h1>Email Verification</h1>
-        <p>Your verification code is: <strong>${otp}</strong></p>
-        <p>This code will expire in 30 minutes.</p>
-        <p>If you don't verify your email within 30 minutes, your account will be automatically deleted.</p>
-      `,
-    });
+    await this.sendVerificationEmail(email, code);
 
-    return true;
+    return {
+      success: true,
+      message: 'Код подтверждения отправлен на email',
+    };
   }
 
-  async verifyOTP(email: string, otp: string): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-
-    const verificationCode = await this.prisma.verificationCode.findFirst({
-      where: {
-        userId: user.id,
-        code: otp,
-        expiresAt: {
-          gt: new Date(),
-        },
-        used: false,
-      },
+  async verifyOTP(email: string, otp: string): Promise<VerifyResponse> {
+    const user = await this.prisma.user.findUnique({ 
+      where: { email },
+      include: { verificationCodes: true }
     });
 
-    if (!verificationCode) {
-      throw new BadRequestException('Invalid or expired OTP code');
+    if (!user) {
+      throw new BadRequestException('Пользователь не найден');
     }
 
-    // Помечаем код как использованный
+    const verificationCode = user.verificationCodes.find(
+      code => code.code === otp && !code.used && code.expiresAt > new Date()
+    );
+
+    if (!verificationCode) {
+      throw new BadRequestException('Неверный или просроченный код подтверждения');
+    }
+
     await this.prisma.verificationCode.update({
       where: { id: verificationCode.id },
       data: { used: true },
     });
 
-    // Помечаем пользователя как верифицированного
     await this.prisma.user.update({
       where: { id: user.id },
       data: { isVerified: true },
     });
 
-    return true;
+    // Генерируем токены после успешной верификации
+    const auth = await this.loginService.generateAuthResponse({
+      id: user.id,
+      email: user.email,
+      name: user.name || '',
+      isVerified: true,
+    });
+
+    return {
+      success: true,
+      message: 'Email успешно подтвержден',
+      accessToken: auth.accessToken,
+      refreshToken: auth.refreshToken,
+      email: auth.email,
+      name: auth.name,
+    };
   }
 } 

@@ -1,13 +1,16 @@
 import { Resolver, Mutation, Args } from '@nestjs/graphql';
 import { VerificationService } from './verification.service';
-import { VerifyOtpInput } from './dto/verify-otp.input';
+import { VerifyResponse } from './models/verify-response.model';
 
 @Resolver()
 export class VerificationResolver {
   constructor(private verificationService: VerificationService) {}
 
-  @Mutation(() => Boolean)
-  async verifyOTP(@Args('data') data: VerifyOtpInput): Promise<boolean> {
-    return this.verificationService.verifyOTP(data.email, data.otp);
+  @Mutation(() => VerifyResponse)
+  async verifyEmail(
+    @Args('email') email: string,
+    @Args('code') code: string
+  ): Promise<VerifyResponse> {
+    return this.verificationService.verifyOTP(email, code);
   }
 } 

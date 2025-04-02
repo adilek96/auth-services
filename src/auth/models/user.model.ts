@@ -1,16 +1,16 @@
 import { ObjectType, Field, ID } from '@nestjs/graphql';
 
-@ObjectType()
+@ObjectType('User')
 export class User {
   @Field(() => ID)
-  id: string;
+  id!: string;
 
-  @Field()
-  email: string;
+  @Field(() => String)
+  email!: string;
 
-  @Field()
-  name: string;
+  @Field(() => String)
+  name!: string;
 
-  @Field()
-  isVerified: boolean;
+  @Field(() => Boolean)
+  isVerified!: boolean;
 } 

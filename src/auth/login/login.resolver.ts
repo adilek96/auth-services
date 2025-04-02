@@ -4,6 +4,7 @@ import { LoginInput } from './dto/login.input';
 import { AuthResponse } from './models/auth.model';
 import { UseGuards } from '@nestjs/common';
 import { GqlAuthGuard } from '../guards/gql-auth.guard';
+import { UnauthorizedException } from '@nestjs/common';
 
 @Resolver()
 export class LoginResolver {
@@ -23,7 +24,10 @@ export class LoginResolver {
 
   @UseGuards(GqlAuthGuard)
   @Mutation(() => Boolean)
-  async logout(@Context('user') user: any): Promise<boolean> {
-    return this.loginService.logout(user.userId);
+  async logout(@Context('req') req: any): Promise<boolean> {
+    if (!req.user || !req.user.userId) {
+      throw new UnauthorizedException('Пользователь не авторизован');
+    }
+    return this.loginService.logout(req.user.userId);
   }
 } 

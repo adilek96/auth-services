@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { AuthResponse } from './models/auth.model';
+import { User } from '../models/user.model';
 
 @Injectable()
 export class LoginService {
@@ -10,15 +11,14 @@ export class LoginService {
   private readonly refreshSecret: string;
 
   constructor(private prisma: PrismaService) {
-    const secret = process.env.JWT_SECRET;
-    const refreshSecret = process.env.JWT_REFRESH_SECRET;
-    
-    if (!secret || !refreshSecret) {
-      throw new Error('JWT secrets are not defined in environment variables');
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET is not defined');
     }
-    
-    this.jwtSecret = secret;
-    this.refreshSecret = refreshSecret;
+    if (!process.env.JWT_REFRESH_SECRET) {
+      throw new Error('JWT_REFRESH_SECRET is not defined');
+    }
+    this.jwtSecret = process.env.JWT_SECRET;
+    this.refreshSecret = process.env.JWT_REFRESH_SECRET;
   }
 
   private generateTokens(userId: string, email: string, isVerified: boolean) {
@@ -65,66 +65,21 @@ export class LoginService {
       throw new BadRequestException('Please verify your email first');
     }
 
-    const { accessToken, refreshToken } = this.generateTokens(
-      user.id,
-      user.email,
-      user.isVerified
-    );
-
-    // Сохраняем refresh token в базе
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken }
-    });
-
-    return {
-      accessToken,
-      refreshToken,
-      email: user.email,
-      name: user.name || '',
-    };
+    return this.generateAuthResponse(user);
   }
 
   async refreshTokens(refreshToken: string): Promise<AuthResponse> {
     try {
-      // Проверяем refresh token
-      const payload = jwt.verify(refreshToken, this.refreshSecret) as {
-        userId: string;
-        email: string;
-        isVerified: boolean;
-      };
-
-      // Проверяем, что токен совпадает с сохраненным в базе
-      const user = await this.prisma.user.findFirst({
-        where: {
-          id: payload.userId,
-          refreshToken: refreshToken
-        }
+      const decoded = jwt.verify(refreshToken, this.refreshSecret) as { userId: string };
+      const user = await this.prisma.user.findUnique({
+        where: { id: decoded.userId },
       });
 
-      if (!user) {
+      if (!user || user.refreshToken !== refreshToken) {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      // Генерируем новые токены
-      const { accessToken, refreshToken: newRefreshToken } = this.generateTokens(
-        user.id,
-        user.email,
-        user.isVerified
-      );
-
-      // Обновляем refresh token в базе
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken: newRefreshToken }
-      });
-
-      return {
-        accessToken,
-        refreshToken: newRefreshToken,
-        email: user.email,
-        name: user.name || '',
-      };
+      return this.generateAuthResponse(user);
     } catch (error) {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -137,5 +92,31 @@ export class LoginService {
       data: { refreshToken: null }
     });
     return true;
+  }
+
+  async generateAuthResponse(user: { id: string; email: string; name: string | null; isVerified: boolean }): Promise<AuthResponse> {
+    const accessToken = jwt.sign(
+      { userId: user.id, email: user.email, isVerified: user.isVerified },
+      this.jwtSecret,
+      { expiresIn: '15m' }
+    );
+
+    const refreshToken = jwt.sign(
+      { userId: user.id },
+      this.refreshSecret,
+      { expiresIn: '7d' }
+    );
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      email: user.email,
+      name: user.name || '',
+    };
   }
 } 

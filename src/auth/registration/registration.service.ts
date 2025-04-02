@@ -11,7 +11,7 @@ export class RegistrationService {
     private verificationService: VerificationService,
   ) {}
 
-  async register(email: string, password: string, confirmPassword: string, name?: string): Promise<User> {
+  async register(email: string, password: string, confirmPassword: string, name: string = ''): Promise<User> {
     if (password !== confirmPassword) {
       throw new BadRequestException('Passwords do not match');
     }
@@ -24,7 +24,12 @@ export class RegistrationService {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     const user = await this.prisma.user.create({
-      data: { email, password: hashedPassword, name: name || '', isVerified: false },
+      data: { 
+        email, 
+        password: hashedPassword, 
+        name, 
+        isVerified: false 
+      },
     });
 
     // Отправляем OTP после успешной регистрации
