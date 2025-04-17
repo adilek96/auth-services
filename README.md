@@ -1,98 +1,263 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Документация API аутентификации
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## Общая информация
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+- Базовый URL: `http://localhost:3000/graphql`
+- Формат: GraphQL
+- Для защищенных запросов требуется заголовок: `Authorization: Bearer <accessToken>`
 
-## Description
+## CORS
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+API поддерживает CORS для следующих доменов:
 
-## Project setup
+- `http://localhost:3000` (бэкенд)
+- `http://localhost:5173` (Vite)
 
-```bash
-$ npm install
+Разрешенные методы:
+
+- GET
+- POST
+- PUT
+- DELETE
+- OPTIONS
+
+Разрешенные заголовки:
+
+- Content-Type
+- Authorization
+
+Поддержка credentials включена для работы с куками и заголовками авторизации.
+
+## Мутации
+
+### 1. Регистрация
+
+```graphql
+mutation {
+  register(
+    email: "test@example.com"
+    password: "123456"
+    confirmPassword: "123456"
+    name: "Test User"
+  ) {
+    id
+    email
+    name
+    isVerified
+  }
+}
 ```
 
-## Compile and run the project
+**Ответ:**
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```json
+{
+  "data": {
+    "register": {
+      "id": "uuid",
+      "email": "test@example.com",
+      "name": "Test User",
+      "isVerified": false
+    }
+  }
+}
 ```
 
-## Run tests
+**Примечание:** После регистрации на email отправляется код подтверждения.
 
-```bash
-# unit tests
-$ npm run test
+### 2. Верификация email
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```graphql
+mutation {
+  verifyEmail(email: "test@example.com", code: "123456") {
+    success
+    message
+    accessToken
+    refreshToken
+    email
+    name
+  }
+}
 ```
 
-## Deployment
+**Ответ:**
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g mau
-$ mau deploy
+```json
+{
+  "data": {
+    "verifyEmail": {
+      "success": true,
+      "message": "Email verified successfully",
+      "accessToken": "jwt-token",
+      "refreshToken": "jwt-refresh-token",
+      "email": "test@example.com",
+      "name": "Test User"
+    }
+  }
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+**Примечание:** После успешной верификации сразу выдаются токены доступа и данные пользователя. Дополнительный вход не требуется.
 
-## Resources
+### 3. Вход через email/password
 
-Check out a few resources that may come in handy when working with NestJS:
+```graphql
+mutation {
+  login(email: "test@example.com", password: "123456") {
+    accessToken
+    refreshToken
+    email
+    name
+  }
+}
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+**Ответ:**
 
-## Support
+```json
+{
+  "data": {
+    "login": {
+      "accessToken": "jwt-token",
+      "refreshToken": "jwt-refresh-token",
+      "email": "test@example.com",
+      "name": "Test User"
+    }
+  }
+}
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### 4. Вход через Google
 
-## Stay in touch
+```graphql
+mutation {
+  googleAuth(token: "google-id-token") {
+    accessToken
+    refreshToken
+    email
+    name
+  }
+}
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+**Ответ:** Аналогичен ответу login
+**Примечание:** Требуется токен от Google Sign-In API
 
-## License
+### 5. Вход через Facebook
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```graphql
+mutation {
+  facebookAuth(token: "facebook-access-token") {
+    accessToken
+    refreshToken
+    email
+    name
+  }
+}
+```
+
+**Ответ:** Аналогичен ответу login
+**Примечание:** Требуется токен от Facebook Login API
+
+### 6. Обновление токенов
+
+```graphql
+mutation {
+  refreshTokens(refreshToken: "ваш-refresh-token") {
+    accessToken
+    refreshToken
+    email
+    name
+  }
+}
+```
+
+**Ответ:** Аналогичен ответу login
+**Примечание:** Используется когда accessToken истек (15 минут)
+
+### 7. Выход из системы
+
+```graphql
+mutation {
+  logout
+}
+```
+
+**Ответ:**
+
+```json
+{
+  "data": {
+    "logout": true
+  }
+}
+```
+
+**Примечание:**
+
+- Требует авторизации (нужен валидный access token в заголовке)
+- При отсутствии авторизации вернет ошибку: `User not authenticated`
+- После успешного выхода refresh token удаляется из базы данных
+
+## Ошибки
+
+Все мутации могут возвращать следующие ошибки:
+
+```json
+{
+  "errors": [
+    {
+      "message": "Описание ошибки",
+      "extensions": {
+        "code": "ERROR_CODE"
+      }
+    }
+  ]
+}
+```
+
+### Коды ошибок:
+
+- `UNAUTHORIZED` - Неверные учетные данные
+- `USER_NOT_FOUND` - Пользователь не найден
+- `INVALID_TOKEN` - Неверный токен
+- `TOKEN_EXPIRED` - Токен истек
+- `EMAIL_NOT_VERIFIED` - Email не подтвержден
+- `INVALID_VERIFICATION_CODE` - Неверный код подтверждения
+
+## Таймауты
+
+- Код подтверждения email действителен 30 минут
+- Access token действителен 15 минут
+- Refresh token действителен 7 дней
+- Неверифицированные пользователи удаляются через 30 минут
+
+## Безопасность
+
+1. Все пароли хешируются с помощью bcrypt
+2. Токены подписываются с помощью JWT
+3. Для социальной аутентификации используются официальные SDK
+4. Защищенные запросы требуют валидный access token
+5. При выходе refresh token удаляется из базы данных
+
+## Интеграция с фронтендом
+
+1. Сохраняйте access и refresh токены после успешной аутентификации
+2. Добавляйте access token в заголовок для защищенных запросов
+3. Используйте refresh token для получения новых токенов
+4. При получении ошибки `TOKEN_EXPIRED` используйте refreshTokens мутацию
+5. При получении ошибки `UNAUTHORIZED` перенаправляйте на страницу входа
+
+## Социальная аутентификация
+
+### Google
+
+1. Получите `GOOGLE_CLIENT_ID` из Google Cloud Console
+2. Используйте Google Sign-In SDK для получения ID токена
+3. Отправьте токен в `googleAuth` мутацию
+
+### Facebook
+
+1. Получите `FACEBOOK_APP_ID` из Facebook Developers Console
+2. Используйте Facebook Login SDK для получения access токена
+3. Отправьте токен в `facebookAuth` мутацию

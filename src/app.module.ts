@@ -8,6 +8,10 @@ import { VerificationModule } from './auth/verification/verification.module';
 import { LoginModule } from './auth/login/login.module';
 import { GoogleModule } from './auth/google/google.module';
 import { FacebookModule } from './auth/facebook/facebook.module';
+import { TerminusModule } from '@nestjs/terminus';
+import { HealthController } from './health.controller';
+import { PrismaHealthIndicator } from './prisma/prisma.health';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -22,7 +26,10 @@ import { FacebookModule } from './auth/facebook/facebook.module';
     LoginModule,
     GoogleModule,
     FacebookModule,
+    TerminusModule,
+    HttpModule,
   ],
-  providers: [AppResolver],
+  controllers: [HealthController],
+  providers: [PrismaHealthIndicator,AppResolver],
 })
 export class AppModule {}
