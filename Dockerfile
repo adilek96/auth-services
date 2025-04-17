@@ -42,9 +42,9 @@ COPY --from=build /app/.env ./.env
 COPY --from=build /app/node_modules/.prisma/client ./node_modules/.prisma/client
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 
-# Явно указываем, что используем только порт 4002
+# Явно указываем, что используем только порт 4001
 ENV PORT=4001
 EXPOSE 4001
 
-# Запускаем приложение из dist/src/main
-CMD ["node", "dist/src/main.js"]
+# Запускаем приложение из dist/main.js
+CMD ["node", "dist/main.js"]
